@@ -1,4 +1,4 @@
-//A workerpool that can get expanded & shrinked dynamically.
+//A workerpool that can get expanded & shrink dynamically.
 package workerpool
 
 //License: See the LICENSE File.
