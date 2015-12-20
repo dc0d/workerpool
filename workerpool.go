@@ -31,7 +31,7 @@ type WorkerPool struct {
 //Starts the worker pool. Initial workers never timeout (well; they do; after a year of unemployment!) and never quit.
 func (d *WorkerPool) Run() {
 	var defaultConf WorkerConfig
-	defaultConf.Registration.Timeout = time.Hour * 24 * 365
+	defaultConf.Timeout = time.Hour * 24 * 365
 
 	for i := 0; i < d.minWorkers; i++ {
 		worker := newWorker(d.workerPool, defaultConf)
@@ -43,7 +43,7 @@ func (d *WorkerPool) Run() {
 
 //Putting more 'Worker's into work. If there is'nt any job to do,
 //they will simply get timed-out and worker pool will shrink to it's minimum size.
-//Default behaviour is they will timeout on conf.Registration.Timeout in a sliding manner.
+//Default behaviour is they will timeout on conf.Timeout in a sliding manner.
 func (d *WorkerPool) GrowExtra(n int, conf WorkerConfig) {
 	for i := 0; i < n; i++ {
 		worker := newWorker(d.workerPool, conf)
@@ -90,17 +90,14 @@ type Job func()
 
 //Configuration for extra workers.
 type WorkerConfig struct {
-	Registration struct {
-		Timeout    time.Duration
-		IsAbsolute bool
-	}
-	Quit chan bool
+	//registration timeout
+	Timeout time.Duration
+	Quit    chan bool
 }
 
-func NewWorkerConfig(timeout time.Duration, isAbsolute bool, quit chan bool) WorkerConfig {
+func NewWorkerConfig(timeout time.Duration, quit chan bool) WorkerConfig {
 	var conf WorkerConfig
-	conf.Registration.Timeout = timeout
-	conf.Registration.IsAbsolute = isAbsolute
+	conf.Timeout = timeout
 	conf.Quit = quit
 
 	return conf
@@ -117,20 +114,18 @@ func (w *worker) Start() {
 }
 
 func (w *worker) startWorking() {
-	var absoluteTimeout <-chan time.Time
-	if w.config.Registration.IsAbsolute {
-		absoluteTimeout = time.After(w.config.Registration.Timeout)
-	}
-
 	for {
+		var timeout <-chan time.Time
+		if w.config.Timeout > 0 {
+			timeout = time.After(w.config.Timeout)
+		}
+
 		//register this worker in the pool
 		select {
 		case w.workerPool <- w.todoChannel:
-		case <-time.After(w.config.Registration.Timeout):
+		case <-timeout:
 			//failed to register; means WorkerPool is full == there are
 			//enough workers with not enough work!
-			return
-		case <-absoluteTimeout:
 			return
 		case <-w.config.Quit:
 			return
@@ -145,8 +140,6 @@ func (w *worker) startWorking() {
 			if job != nil {
 				job()
 			}
-		case <-w.config.Quit:
-			return
 		}
 	}
 }
