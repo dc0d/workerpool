@@ -1,6 +1,8 @@
 package workerpool
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -89,6 +91,35 @@ func TestQuit(t *testing.T) {
 
 	if elapsed < time.Millisecond*4000 {
 		t.Log(elapsed)
+		t.Fail()
+	}
+}
+
+func TestSmokeTest(t *testing.T) {
+	jobChannel := make(chan Job, 50)
+
+	pool := New(0, jobChannel)
+	pool.Run()
+
+	pool.GrowExtra(512, WorkerConfig{Timeout: time.Millisecond * 1000})
+
+	var count int64
+	const N = 10000
+
+	wg := new(sync.WaitGroup)
+	for i := 0; i < N; i++ {
+		jobChannel <- func() {
+			wg.Add(1)
+			<-time.After(time.Millisecond * 50)
+			atomic.AddInt64(&count, 1)
+			wg.Done()
+		}
+	}
+
+	<-time.After(time.Millisecond * 500)
+	wg.Wait()
+
+	if count != N {
 		t.Fail()
 	}
 }

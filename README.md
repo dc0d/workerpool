@@ -44,7 +44,7 @@ func main() {
 	var conf workerpool.WorkerConfig
 	//These workers will get dismissed if there are not
 	//enough jobs for 30 milliseconds (they are so impatient!).
-	conf.Registration.Timeout = time.Millisecond * 30
+	conf.Timeout = time.Millisecond * 30
 	pool.GrowExtra(10, conf)
 
 	<-time.After(time.Millisecond * 100)

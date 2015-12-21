@@ -41,9 +41,10 @@ func (d *WorkerPool) Run() {
 	go d.dispatch()
 }
 
-//Putting more 'Worker's into work. If there is'nt any job to do,
+//Putting more 'Worker's into work. If there is'nt any job to do, and a timeout is set,
 //they will simply get timed-out and worker pool will shrink to it's minimum size.
 //Default behaviour is they will timeout on conf.Timeout in a sliding manner.
+//A quit channel can be used too, to explicitly stop extra workers.
 func (d *WorkerPool) GrowExtra(n int, conf WorkerConfig) {
 	for i := 0; i < n; i++ {
 		worker := newWorker(d.workerPool, conf)
@@ -110,6 +111,7 @@ type worker struct {
 }
 
 func (w *worker) Start() {
+	//TODO: should not start twice (sync.Once)
 	go w.startWorking()
 }
 
