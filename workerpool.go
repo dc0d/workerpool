@@ -28,10 +28,9 @@ type WorkerPool struct {
 	minWorkers int
 }
 
-//Starts the worker pool. Initial workers never timeout (well; they do; after a year of unemployment!) and never quit.
+//Starts the worker pool. Initial workers never timeout and never quit.
 func (d *WorkerPool) Run() {
 	var defaultConf WorkerConfig
-	defaultConf.Timeout = time.Hour * 24 * 365
 
 	for i := 0; i < d.minWorkers; i++ {
 		worker := newWorker(d.workerPool, defaultConf)
