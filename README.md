@@ -52,3 +52,5 @@ func main() {
 	done.Wait()
 }
 ```
+
+An absolute timeout is simply a Go idiomatic pattern: closing `conf.Quit` after a specific time period - using a go-routine.

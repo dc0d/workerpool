@@ -1,4 +1,4 @@
-//A workerpool that can get expanded & shrink dynamically.
+//Package workerpool provides a workerpool that can get expanded & shrink dynamically.
 package workerpool
 
 //License: See the LICENSE File.
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-//Sample usage:
+//WorkerPool sample usage:
 //	func main() {
 //		jobChannel := make(chan workerpool.Job)
 //
@@ -28,7 +28,7 @@ type WorkerPool struct {
 	minWorkers int
 }
 
-//Starts the worker pool. Initial workers never timeout and never quit.
+//Run starts the worker pool. Initial workers never timeout and never quit.
 func (d *WorkerPool) Run() {
 	var defaultConf WorkerConfig
 
@@ -40,7 +40,7 @@ func (d *WorkerPool) Run() {
 	go d.dispatch()
 }
 
-//Putting more 'Worker's into work. If there is'nt any job to do, and a timeout is set,
+//GrowExtra is for putting more 'Worker's into work. If there is'nt any job to do, and a timeout is set,
 //they will simply get timed-out and worker pool will shrink to it's minimum size.
 //Default behaviour is they will timeout on conf.Timeout in a sliding manner.
 //A quit channel can be used too, to explicitly stop extra workers.
@@ -73,7 +73,7 @@ func (d *WorkerPool) handleJob(j Job) {
 	todo <- j
 }
 
-//Creates a new worker pool. If minWorkers is 0 or negative, the default number of workers would be runtime.NumCPU().
+//New creates a new worker pool. If minWorkers is 0 or negative, the default number of workers would be runtime.NumCPU().
 func New(minWorkers int, jobChannel chan Job) *WorkerPool {
 	if minWorkers <= 0 {
 		minWorkers = runtime.NumCPU()
@@ -86,15 +86,19 @@ func New(minWorkers int, jobChannel chan Job) *WorkerPool {
 	}
 }
 
+//Job is; well a job to do, by the workers in the pool
 type Job func()
 
-//Configuration for extra workers.
+//WorkerConfig is the configuration for extra workers.
 type WorkerConfig struct {
 	//registration timeout
 	Timeout time.Duration
 	Quit    chan bool
 }
 
+//NewWorkerConfig creates a conf, when creating new extra workers.
+//Default behaviour is they will timeout on conf.Timeout in a sliding manner.
+//There is no absoloute timeout strategy because it can be done simply by using the Quit channel.
 func NewWorkerConfig(timeout time.Duration, quit chan bool) WorkerConfig {
 	var conf WorkerConfig
 	conf.Timeout = timeout
