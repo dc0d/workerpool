@@ -73,14 +73,21 @@ func (d *WorkerPool) handleJob(j Job) {
 	todo <- j
 }
 
-//New creates a new worker pool. If minWorkers is 0 or negative, the default number of workers would be runtime.NumCPU().
+//New creates a new worker pool. If minWorkers is negative, the default number of workers would be runtime.NumCPU().
 func New(minWorkers int, jobChannel chan Job) *WorkerPool {
-	if minWorkers <= 0 {
+	if minWorkers < 0 {
 		minWorkers = runtime.NumCPU()
 	}
 
+	var _workerPool chan chan Job
+	if minWorkers == 0 {
+		_workerPool = make(chan chan Job)
+	} else {
+		_workerPool = make(chan chan Job, minWorkers)
+	}
+
 	return &WorkerPool{
-		workerPool: make(chan chan Job, minWorkers),
+		workerPool: _workerPool,
 		JobChannel: jobChannel,
 		minWorkers: minWorkers,
 	}

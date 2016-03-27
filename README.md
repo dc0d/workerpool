@@ -17,7 +17,7 @@ func main() {
 }
 ```
 
-If a negative or zero value passes to `New` as the minimum number of workers, then the number of CPUs would be used as minimum number.
+If a negative value passes to `New` as the minimum number of workers, then the number of CPUs would be used as minimum number.
 
 When a temporary burst comes, we can add workers to the pool with different strategies. We can quit them explicitly or let them work until there are no more jobs to do and they will get timed-out using a sliding timeout, like this:
 
