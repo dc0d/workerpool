@@ -3,19 +3,19 @@ This is an implementation of a workerpool which can get expanded &amp; shrink dy
 
 ```go
 func main() {
-    jobs := make(chan workerpool.Job, 10)
-    workerpool.InitNewPool(-1, jobs)
+	jobs := make(chan workerpool.Job, 10)
+	workerpool.InitNewPool(-1, jobs)
 
-    wg := &sync.WaitGroup{}
-    for i := 0; i < 10; i++ {
-        wg.Add(1)
-        lc := i
-        jobs <- func() {
-            defer wg.Done()
-            log.Infof("doing job #%d", lc)
-        }
-    }
-    wg.Wait()
+	wg := &sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		lc := i
+		jobs <- workerpool.JobFunc(func() {
+			defer wg.Done()
+			log.Infof("doing job #%d", lc)
+		})
+	}
+	wg.Wait()
 }
 ```
 
@@ -29,16 +29,19 @@ func main() {
 	pool := workerpool.InitNewPool(-1, jobs)
 
 	wg := &sync.WaitGroup{}
-	for i := 0; i < 10000; i++ {
-		wg.Add(1)
-		lc := i
-		go func() {
-			jobs <- func() {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < 10000; i++ {
+			wg.Add(1)
+			lc := i
+			jobs <- workerpool.JobFunc(func() {
 				defer wg.Done()
 				log.Infof("doing job #%d", lc)
-			}
-		}()
-	}
+			})
+		}
+	}()
 
 	pool.Expand(450, time.Second*10, nil)
 

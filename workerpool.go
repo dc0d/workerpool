@@ -83,7 +83,17 @@ func InitNewPool(minWorkers int, jobChannel chan Job) *WorkerPool {
 }
 
 //Job is a job to do, by the workers in the pool
-type Job func()
+type Job interface {
+	Do()
+}
+
+//JobFunc wraps a func as Job
+type JobFunc func()
+
+//Do implements Job's Do
+func (wf JobFunc) Do() {
+	wf()
+}
 
 type worker struct {
 	workerPool  chan chan Job
@@ -123,7 +133,7 @@ func (w *worker) begin() {
 			}
 
 			if job != nil {
-				job()
+				job.Do()
 			}
 			//we do not check for timeout or quit here because a registered worker
 			//is meant to do his job

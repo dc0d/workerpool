@@ -14,10 +14,10 @@ func TestNegWorkers(t *testing.T) {
 
 	n := int64(runtime.NumCPU())
 	var backSlot int64
-	var job Job = func() {
+	var job = JobFunc(func() {
 		atomic.AddInt64(&backSlot, 1)
 		select {}
-	}
+	})
 OUT1:
 	for {
 		select {
@@ -39,9 +39,10 @@ func TestZeroWorkers(t *testing.T) {
 	pool := InitNewPool(0, jobChannel)
 
 	var backSlot int64 = 10
-	var job Job = func() {
+	var job = JobFunc(func() {
 		atomic.StoreInt64(&backSlot, 110)
-	}
+	})
+
 	select {
 	case jobChannel <- job:
 	case <-time.After(time.Millisecond * 300):
