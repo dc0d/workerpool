@@ -10,8 +10,7 @@ import (
 
 func TestNegWorkers(t *testing.T) {
 	jobChannel := make(chan Job)
-	pool := New(-1, jobChannel)
-	pool.Run()
+	InitNewPool(-1, jobChannel)
 
 	n := int64(runtime.NumCPU())
 	var backSlot int64
@@ -37,8 +36,7 @@ OUT1:
 
 func TestZeroWorkers(t *testing.T) {
 	jobChannel := make(chan Job)
-	pool := New(0, jobChannel)
-	pool.Run()
+	pool := InitNewPool(0, jobChannel)
 
 	var backSlot int64 = 10
 	var job Job = func() {
@@ -52,7 +50,7 @@ func TestZeroWorkers(t *testing.T) {
 		t.Fail()
 	}
 
-	pool.GrowExtra(1, NewWorkerConfig(0, make(chan bool)))
+	pool.Expand(1, 0, make(chan bool))
 
 	done := make(chan bool)
 	job = func() {
@@ -79,12 +77,10 @@ func TestAbsoluteTimeout(t *testing.T) {
 
 	jobChannel := make(chan Job, 2)
 
-	pool := New(initialWorkers, jobChannel)
-	pool.Run()
+	pool := InitNewPool(initialWorkers, jobChannel)
 
-	var conf WorkerConfig
-	conf.Quit = make(chan bool)
-	pool.GrowExtra(extraWorkers, conf)
+	quit1 := make(chan bool)
+	pool.Expand(extraWorkers, 0, quit1)
 
 	afterGoroutines := runtime.NumGoroutine()
 	thenGoroutines := startedWith + extraWorkers + initialWorkers + dispatcherGoroutine
@@ -97,7 +93,7 @@ func TestAbsoluteTimeout(t *testing.T) {
 	absoluteTimeout := func() {
 		defer close(done)
 		<-time.After(time.Millisecond * 100)
-		close(conf.Quit)
+		close(quit1)
 	}
 
 	go absoluteTimeout()
@@ -121,12 +117,9 @@ func TestTimeout(t *testing.T) {
 
 	jobChannel := make(chan Job, 2)
 
-	pool := New(initialWorkers, jobChannel)
-	pool.Run()
+	pool := InitNewPool(initialWorkers, jobChannel)
 
-	var conf WorkerConfig
-	conf.Timeout = time.Millisecond * 10
-	pool.GrowExtra(extraWorkers, conf)
+	pool.Expand(extraWorkers, time.Millisecond*10, nil)
 
 	<-time.After(time.Millisecond * 100)
 
@@ -146,12 +139,10 @@ func TestQuit(t *testing.T) {
 
 	jobChannel := make(chan Job, 2)
 
-	pool := New(initialWorkers, jobChannel)
-	pool.Run()
+	pool := InitNewPool(initialWorkers, jobChannel)
 
-	var conf WorkerConfig
-	conf.Quit = make(chan bool)
-	pool.GrowExtra(extraWorkers, conf)
+	quit1 := make(chan bool)
+	pool.Expand(extraWorkers, 0, quit1)
 
 	afterGoroutines := runtime.NumGoroutine()
 	thenGoroutines := startedWith + extraWorkers + initialWorkers + dispatcherGoroutine
@@ -160,7 +151,7 @@ func TestQuit(t *testing.T) {
 		t.Fail()
 	}
 
-	close(conf.Quit)
+	close(quit1)
 	<-time.After(time.Millisecond * 100)
 
 	afterGoroutines = runtime.NumGoroutine()

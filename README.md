@@ -3,54 +3,47 @@ This is an implementation of a workerpool which can get expanded &amp; shrink dy
 
 ```go
 func main() {
-	jobChannel := make(chan workerpool.Job)
+    jobs := make(chan workerpool.Job, 10)
+    workerpool.InitNewPool(-1, jobs)
 
-	pool := workerpool.New(0, jobChannel)
-	pool.Run()
-
-	done := make(chan bool)
-	jobChannel <- func() {
-		log.Info("Job done!")
-		done <- true
-	}
-	<-done
+    wg := &sync.WaitGroup{}
+    for i := 0; i < 10; i++ {
+        wg.Add(1)
+        lc := i
+        jobs <- func() {
+            defer wg.Done()
+            log.Infof("doing job #%d", lc)
+        }
+    }
+    wg.Wait()
 }
 ```
 
-If a negative value passes to `New` as the minimum number of workers, then the number of CPUs would be used as minimum number.
+If a negative value is passed as the minimum number of workers, then the number of CPUs would be used as minimum number.
 
 When a temporary burst comes, we can add workers to the pool with different strategies. We can quit them explicitly or let them work until there are no more jobs to do and they will get timed-out using a sliding timeout, like this:
 
 ```go
 func main() {
-	jobChannel := make(chan workerpool.Job)
+	jobs := make(chan workerpool.Job, 50)
+	pool := workerpool.InitNewPool(-1, jobs)
 
-	pool := workerpool.New(0, jobChannel)
-	pool.Run()
-
-	done := new(sync.WaitGroup)
-
-	for i := 0; i < 100; i++ {
-		jobChannel <- func() {
-			done.Add(1)
-			defer done.Done()
-			//Oh! There is too much work!
-			//We need more workers (or less? depending on what you are doing
-			//and based on what strategy or algorithm you are using)!
-			log.Info("working ...")
-		}
+	wg := &sync.WaitGroup{}
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		lc := i
+		go func() {
+			jobs <- func() {
+				defer wg.Done()
+				log.Infof("doing job #%d", lc)
+			}
+		}()
 	}
 
-	var conf workerpool.WorkerConfig
-	//These workers will get dismissed if there are not
-	//enough jobs for 30 milliseconds (they are so impatient!).
-	conf.Timeout = time.Millisecond * 30
-	pool.GrowExtra(10, conf)
+	pool.Expand(450, time.Second*10, nil)
 
-	<-time.After(time.Millisecond * 100)
-
-	done.Wait()
+	wg.Wait()
 }
 ```
 
-An absolute timeout is simply a Go idiomatic pattern: closing `conf.Quit` after a specific time period - using a go-routine.
+An absolute timeout is simply a Go idiomatic pattern: closing a channel after a specific time period - using a go-routine.

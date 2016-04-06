@@ -9,72 +9,54 @@ import (
 )
 
 //WorkerPool sample usage:
-//	func main() {
-//		jobChannel := make(chan workerpool.Job)
+//  func main() {
+//      jobs := make(chan workerpool.Job, 10)
+//      workerpool.InitNewPool(-1, jobs)
 //
-//		pool := workerpool.New(0, jobChannel)
-//		pool.Run()
-//
-//		done := make(chan bool)
-//		jobChannel <- func() {
-//			log.Info("Job done!")
-//			done <- true
-//		}
-//		<-done
-//	}
+//      wg := &sync.WaitGroup{}
+//      for i := 0; i < 10; i++ {
+//          wg.Add(1)
+//          lc := i
+//          jobs <- func() {
+//              defer wg.Done()
+//              log.Infof("doing job #%d", lc)
+//          }
+//      }
+//      wg.Wait()
+//  }
 type WorkerPool struct {
 	workerPool chan chan Job
 	JobChannel chan Job
-	minWorkers int
 }
 
-//Run starts the worker pool. Initial workers never timeout and never quit.
-func (d *WorkerPool) Run() {
-	var defaultConf WorkerConfig
-
-	for i := 0; i < d.minWorkers; i++ {
-		worker := newWorker(d.workerPool, defaultConf)
-		worker.Start()
-	}
-
-	go d.dispatch()
-}
-
-//GrowExtra is for putting more 'Worker's into work. If there is'nt any job to do, and a timeout is set,
+//Expand is for putting more 'Worker's into work. If there is'nt any job to do, and a timeout is set,
 //they will simply get timed-out and worker pool will shrink to it's minimum size.
 //Default behaviour is they will timeout on conf.Timeout in a sliding manner.
 //A quit channel can be used too, to explicitly stop extra workers.
-func (d *WorkerPool) GrowExtra(n int, conf WorkerConfig) {
+func (pool *WorkerPool) Expand(n int, timeout time.Duration, quit chan bool) {
 	for i := 0; i < n; i++ {
-		worker := newWorker(d.workerPool, conf)
-		worker.Start()
+		initWorker(pool.workerPool, timeout, quit)
 	}
 }
 
-func (d *WorkerPool) dispatch() {
+func (pool *WorkerPool) dispatch() {
 	for {
 		select {
-		case job, ok := <-d.JobChannel:
+		case job, ok := <-pool.JobChannel:
 			if !ok {
 				//it means this dispatcher has stopped
 				return
 			}
 
-			//memory hungry version
-			//go d.handleJob(job)
-
-			d.handleJob(job)
+			//handle job
+			todo := <-pool.workerPool
+			todo <- job
 		}
 	}
 }
 
-func (d *WorkerPool) handleJob(j Job) {
-	todo := <-d.workerPool
-	todo <- j
-}
-
-//New creates a new worker pool. If minWorkers is negative, the default number of workers would be runtime.NumCPU().
-func New(minWorkers int, jobChannel chan Job) *WorkerPool {
+//InitNewPool creates a new worker pool. If minWorkers is negative, the default number of workers would be runtime.NumCPU().
+func InitNewPool(minWorkers int, jobChannel chan Job) *WorkerPool {
 	if minWorkers < 0 {
 		minWorkers = runtime.NumCPU()
 	}
@@ -86,50 +68,41 @@ func New(minWorkers int, jobChannel chan Job) *WorkerPool {
 		_workerPool = make(chan chan Job, minWorkers)
 	}
 
-	return &WorkerPool{
+	pool := &WorkerPool{
 		workerPool: _workerPool,
 		JobChannel: jobChannel,
-		minWorkers: minWorkers,
 	}
+
+	for i := 0; i < minWorkers; i++ {
+		initWorker(pool.workerPool, 0, nil)
+	}
+
+	go pool.dispatch()
+
+	return pool
 }
 
-//Job is; well a job to do, by the workers in the pool
+//Job is a job to do, by the workers in the pool
 type Job func()
-
-//WorkerConfig is the configuration for extra workers.
-type WorkerConfig struct {
-	//registration timeout
-	Timeout time.Duration
-	Quit    chan bool
-}
-
-//NewWorkerConfig creates a conf, when creating new extra workers.
-//Default behaviour is they will timeout on conf.Timeout in a sliding manner.
-//There is no absoloute timeout strategy because it can be done simply by using the Quit channel.
-func NewWorkerConfig(timeout time.Duration, quit chan bool) WorkerConfig {
-	var conf WorkerConfig
-	conf.Timeout = timeout
-	conf.Quit = quit
-
-	return conf
-}
 
 type worker struct {
 	workerPool  chan chan Job
 	todoChannel chan Job
-	config      WorkerConfig
+	timeout     time.Duration
+	quit        chan bool
 }
 
-func (w *worker) Start() {
-	//TODO: should not start twice (sync.Once)
-	go w.startWorking()
-}
-
-func (w *worker) startWorking() {
+func (w *worker) begin() {
 	for {
 		var timeout <-chan time.Time
-		if w.config.Timeout > 0 {
-			timeout = time.After(w.config.Timeout)
+		if w.timeout > 0 {
+			timeout = time.After(w.timeout)
+		}
+
+		select {
+		case <-w.quit:
+			return
+		default:
 		}
 
 		//register this worker in the pool
@@ -139,7 +112,7 @@ func (w *worker) startWorking() {
 			//failed to register; means WorkerPool is full == there are
 			//enough workers with not enough work!
 			return
-		case <-w.config.Quit:
+		case <-w.quit:
 			return
 		}
 
@@ -152,14 +125,22 @@ func (w *worker) startWorking() {
 			if job != nil {
 				job()
 			}
+			//we do not check for timeout or quit here because a registered worker
+			//is meant to do his job
+			//(& implementing unregistering would be complicated, inefficiet & unnecessary)
 		}
 	}
 }
 
-func newWorker(workerPool chan chan Job, conf WorkerConfig) *worker {
-	return &worker{
+func initWorker(workerPool chan chan Job, timeout time.Duration, quit chan bool) *worker {
+	w := &worker{
 		workerPool:  workerPool,
 		todoChannel: make(chan Job),
-		config:      conf,
+		timeout:     timeout,
+		quit:        quit,
 	}
+
+	go w.begin()
+
+	return w
 }
