@@ -4,7 +4,7 @@ This is an implementation of a workerpool which can get expanded &amp; shrink dy
 ```go
 func main() {
 	jobs := make(chan workerpool.Job, 10)
-	workerpool.InitNewPool(-1, jobs)
+	workerpool.NewWorkerPool(-1, jobs)
 
 	wg := &sync.WaitGroup{}
 	for i := 0; i < 10; i++ {
@@ -26,7 +26,7 @@ When a temporary burst comes, we can add workers to the pool with different stra
 ```go
 func main() {
 	jobs := make(chan workerpool.Job, 50)
-	pool := workerpool.InitNewPool(-1, jobs)
+	pool := workerpool.NewWorkerPool(-1, jobs)
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
@@ -50,3 +50,9 @@ func main() {
 ```
 
 An absolute timeout is simply a Go idiomatic pattern: closing a channel after a specific time period - using a go-routine.
+
+---
+
+### TODO:
+
+* Even more tests from actual use-cases

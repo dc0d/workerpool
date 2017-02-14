@@ -10,7 +10,7 @@ import (
 
 func TestNegWorkers(t *testing.T) {
 	jobChannel := make(chan Job)
-	InitNewPool(-1, jobChannel)
+	NewWorkerPool(-1, jobChannel)
 
 	n := int64(runtime.NumCPU())
 	var backSlot int64
@@ -36,7 +36,7 @@ OUT1:
 
 func TestZeroWorkers(t *testing.T) {
 	jobChannel := make(chan Job)
-	pool := InitNewPool(0, jobChannel)
+	pool := NewWorkerPool(0, jobChannel)
 
 	var backSlot int64 = 10
 	var job = JobFunc(func() {
@@ -51,7 +51,7 @@ func TestZeroWorkers(t *testing.T) {
 		t.Fail()
 	}
 
-	pool.Expand(1, 0, make(chan bool))
+	pool.Expand(1, 0, nil)
 
 	done := make(chan bool)
 	job = func() {
@@ -78,9 +78,9 @@ func TestAbsoluteTimeout(t *testing.T) {
 
 	jobChannel := make(chan Job, 2)
 
-	pool := InitNewPool(initialWorkers, jobChannel)
+	pool := NewWorkerPool(initialWorkers, jobChannel)
 
-	quit1 := make(chan bool)
+	quit1 := make(chan struct{})
 	pool.Expand(extraWorkers, 0, quit1)
 
 	afterGoroutines := runtime.NumGoroutine()
@@ -118,7 +118,7 @@ func TestTimeout(t *testing.T) {
 
 	jobChannel := make(chan Job, 2)
 
-	pool := InitNewPool(initialWorkers, jobChannel)
+	pool := NewWorkerPool(initialWorkers, jobChannel)
 
 	pool.Expand(extraWorkers, time.Millisecond*10, nil)
 
@@ -140,9 +140,9 @@ func TestQuit(t *testing.T) {
 
 	jobChannel := make(chan Job, 2)
 
-	pool := InitNewPool(initialWorkers, jobChannel)
+	pool := NewWorkerPool(initialWorkers, jobChannel)
 
-	quit1 := make(chan bool)
+	quit1 := make(chan struct{})
 	pool.Expand(extraWorkers, 0, quit1)
 
 	afterGoroutines := runtime.NumGoroutine()
@@ -165,4 +165,55 @@ func TestQuit(t *testing.T) {
 
 func maxDiff(fst, snd, diff int) bool {
 	return math.Abs(float64(fst)-float64(snd)) > float64(diff)
+}
+
+func TestWorkerPoolQuit(t *testing.T) {
+	initialWorkers := 10
+	extraWorkers := 10
+	startedWith := runtime.NumGoroutine()
+
+	jobChannel := make(chan Job, 2)
+
+	pool := NewWorkerPool(initialWorkers, jobChannel)
+
+	quit1 := make(chan struct{})
+	pool.Expand(extraWorkers, 0, quit1)
+
+	pool.Stop()
+	<-time.After(time.Millisecond * 500)
+	runtime.GC()
+	<-time.After(time.Millisecond * 500)
+
+	afterGoroutines := runtime.NumGoroutine()
+
+	if afterGoroutines != startedWith {
+		t.Log(startedWith, afterGoroutines)
+		t.Fail()
+	}
+}
+
+func TestWorkerPoolQuitByClosingJobChannel(t *testing.T) {
+	initialWorkers := 10
+	extraWorkers := 10
+	startedWith := runtime.NumGoroutine()
+
+	jobChannel := make(chan Job, 2)
+
+	pool := NewWorkerPool(initialWorkers, jobChannel)
+
+	quit1 := make(chan struct{})
+	pool.Expand(extraWorkers, 0, quit1)
+
+	// should use pool.Stop() instead, but this might come in handy too
+	close(jobChannel)
+	<-time.After(time.Millisecond * 500)
+	runtime.GC()
+	<-time.After(time.Millisecond * 500)
+
+	afterGoroutines := runtime.NumGoroutine()
+
+	if afterGoroutines != startedWith {
+		t.Log(startedWith, afterGoroutines)
+		t.Fail()
+	}
 }
