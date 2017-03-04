@@ -159,7 +159,8 @@ func (w *worker) begin(wg *sync.WaitGroup) {
 			// (& implementing unregistering would be complicated, inefficiet & unnecessary)
 			// unless the whole pool is quit (a prototype implemented using a priority queue
 			// - a heap - but it was just more complicated and did not add much; should
-			// investigate it more deeply; but this just works fine).
+			// investigate it more deeply; but this just works fine; after the burst,
+			// the expanded workers would just do their last job, eventually).
 		case <-w.poolQuit:
 			return
 		}

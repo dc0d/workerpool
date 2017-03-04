@@ -24,7 +24,7 @@ func main() {
 
 If a negative value is passed as the minimum number of workers, then the number of CPUs would be used as minimum number. We can stop the worker pool either by calling `pool.StopWait()` or closing the input job channel (if we want to wait for all the worker goroutines to stop, we should call `pool.StopWait()`).
 
-When a temporary burst comes, we can add workers to the pool with different strategies. We can quit them explicitly or let them work until there are no more jobs to do and they will get timed-out in a sliding (timeout) manner, like this:
+When a temporary burst comes, we can add workers to the pool with different strategies. We can quit them explicitly or let them work until there are no more jobs to do and they will get timed-out in a sliding (timeout) manner and would just do their last job, eventually, like this:
 
 ```go
 func main() {

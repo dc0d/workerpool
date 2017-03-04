@@ -215,3 +215,26 @@ func TestWorkerPoolQuitByClosingJobChannel(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestWithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	initialWorkers := 10
+	extraWorkers := 10
+	startedWith := runtime.NumGoroutine()
+
+	jobChannel := make(chan func(), 2)
+	pool, _ := WithContext(ctx, initialWorkers, jobChannel)
+
+	pool.Expand(extraWorkers, 100*time.Millisecond, nil)
+
+	cancel()
+	pool.StopWait()
+
+	afterGoroutines := runtime.NumGoroutine()
+
+	if afterGoroutines != startedWith {
+		t.Log(startedWith, afterGoroutines)
+		t.Fail()
+	}
+}
