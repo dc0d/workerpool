@@ -22,9 +22,9 @@ func main() {
 }
 ```
 
-If a negative value is passed as the minimum number of workers, then the number of CPUs would be used as minimum number.
+If a negative value is passed as the minimum number of workers, then the number of CPUs would be used as minimum number. We can stop the worker pool either by calling `pool.StopWait()` or closing the input job channel (if we want to wait for all the worker goroutines to stop, we should call `pool.StopWait()`).
 
-When a temporary burst comes, we can add workers to the pool with different strategies. We can quit them explicitly or let them work until there are no more jobs to do and they will get timed-out using a sliding timeout, like this:
+When a temporary burst comes, we can add workers to the pool with different strategies. We can quit them explicitly or let them work until there are no more jobs to do and they will get timed-out in a sliding (timeout) manner, like this:
 
 ```go
 func main() {
@@ -60,3 +60,15 @@ func main() {
 ```
 
 An absolute timeout is simply a Go idiomatic pattern: closing a channel after a specific time period - using a go-routine.
+
+## Update
+
+`master` now points to `v2` branch which is a redesign of the `workerpool` package employing the standard context pattern (using `context.Context`).
+
+You can get `v2` by:
+
+```
+go get gopkg.in/dc0d/workerpool.v2
+```
+
+Or from the `master` branch.
