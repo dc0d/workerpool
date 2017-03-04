@@ -1,21 +1,24 @@
 # workerpool
-This is an implementation of a workerpool which can get expanded &amp; shrink dynamically. Workers can get added when needed and get dismissed when no longer are needed. Of-course this workerpool can be used just as a simple one:
+This is an implementation of a workerpool which can get expanded &amp; shrink dynamically. Workers can get added when needed and get dismissed when no longer are needed. Of-course this workerpool can be used just as a simple one with a fixed size:
 
 ```go
 func main() {
-	jobs := make(chan workerpool.Job, 10)
-	workerpool.NewWorkerPool(-1, jobs)
+	jobs := make(chan func(), 10)
+	// for demonstration purpose
+	myAppCtx, myAppCancel := context.WithCancel(context.Background())
+	// for example: could get called on SIGINT
+	_ = myAppCancel
 
-	wg := &sync.WaitGroup{}
+	pool, _ := workerpool.WithContext(myAppCtx, -1, jobs)
+
 	for i := 0; i < 10; i++ {
-		wg.Add(1)
 		lc := i
-		jobs <- workerpool.JobFunc(func() {
-			defer wg.Done()
-			log.Infof("doing job #%d", lc)
-		})
+		jobs <- func() {
+			log.Printf("doing job #%d", lc)
+		}
 	}
-	wg.Wait()
+
+	pool.StopWait()
 }
 ```
 
@@ -25,34 +28,35 @@ When a temporary burst comes, we can add workers to the pool with different stra
 
 ```go
 func main() {
-	jobs := make(chan workerpool.Job, 50)
-	pool := workerpool.NewWorkerPool(-1, jobs)
+	jobs := make(chan func(), 10)
+	// for demonstration purpose
+	myAppCtx, myAppCancel := context.WithCancel(context.Background())
+	// for example: could get called on SIGINT
+	_ = myAppCancel
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
+	pool, _ := workerpool.WithContext(myAppCtx, -1, jobs)
+
+	// a WaitGroup for our jobs (workerpool use it's own WaitGroup for it's
+	// workers)
+	wgJobs := &sync.WaitGroup{}
+	wgJobs.Add(1)
 	go func() {
-		defer wg.Done()
+		defer wgJobs.Done()
 
 		for i := 0; i < 10000; i++ {
-			wg.Add(1)
+			wgJobs.Add(1)
 			lc := i
-			jobs <- workerpool.JobFunc(func() {
-				defer wg.Done()
-				log.Infof("doing job #%d", lc)
-			})
+			jobs <- func() {
+				defer wgJobs.Done()
+				log.Printf("doing job #%d", lc)
+			}
 		}
 	}()
 
-	pool.Expand(450, time.Second*10, nil)
-
-	wg.Wait()
+	pool.Expand(1000, time.Second*10, nil)
+	wgJobs.Wait()
+	pool.StopWait()
 }
 ```
 
 An absolute timeout is simply a Go idiomatic pattern: closing a channel after a specific time period - using a go-routine.
-
----
-
-### TODO:
-
-* Even more tests from actual use-cases

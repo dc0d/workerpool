@@ -1,74 +1,86 @@
-// Package workerpool provides a workerpool that can get expanded & shrink dynamically.
+// Package workerpool provides a workerpool. It also  can get expanded & shrink dynamically.
 package workerpool
 
-// License: See the LICENSE File.
-
 import (
+	"context"
 	"runtime"
 	"sync"
 	"time"
 )
 
-//-----------------------------------------------------------------------------
+// License: See the LICENSE File.
 
 // WorkerPool sample usage:
-//  func main() {
-//      jobs := make(chan workerpool.Job, 10)
-//      workerpool.NewWorkerPool(-1, jobs)
+//	func main() {
+// 		jobs := make(chan func(), 10)
+// 		// for demonstration purpose
+// 		myAppCtx, myAppCancel := context.WithCancel(context.Background())
+// 		// for example: could get called on SIGINT
+// 		_ = myAppCancel
 //
-//      wg := &sync.WaitGroup{}
-//      for i := 0; i < 10; i++ {
-//          wg.Add(1)
-//          lc := i
-//          jobs <- func() {
-//              defer wg.Done()
-//              log.Infof("doing job #%d", lc)
-//          }
-//      }
-//      wg.Wait()
-//  }
+// 		pool, _ := workerpool.WithContext(myAppCtx, -1, jobs)
+//
+// 		for i := 0; i < 10; i++ {
+// 			lc := i
+// 			jobs <- func() {
+// 				log.Printf("doing job #%d", lc)
+// 			}
+// 		}
+//
+// 		pool.StopWait()
+//	}
 type WorkerPool struct {
-	workerPool chan chan Job
-	jobChannel chan Job
+	workerPool chan chan func()
+	jobChannel chan func()
 
-	quit     chan struct{}
-	quitOnce *sync.Once
+	cancel  func()
+	stopped chan struct{}
+	wg      sync.WaitGroup
 }
 
-// NewWorkerPool creates a new worker pool. If minWorkers is negative, the default
+// WithContext creates a new worker pool. If minWorkers is negative, the default
 // number of workers would be runtime.NumCPU(). When minWorkers is zero, you can
 // only use WorkerPool by expanding it.
-func NewWorkerPool(minWorkers int, jobChannel chan Job) *WorkerPool {
+func WithContext(
+	ctx context.Context,
+	minWorkers int,
+	jobChannel chan func()) (*WorkerPool, context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
 	if minWorkers < 0 {
 		minWorkers = runtime.NumCPU()
 	}
-
 	pool := &WorkerPool{
-		workerPool: make(chan chan Job, minWorkers),
+		workerPool: make(chan chan func(), minWorkers),
 		jobChannel: jobChannel,
-		quit:       make(chan struct{}),
-		quitOnce:   new(sync.Once),
+		cancel:     cancel,
+		stopped:    make(chan struct{}),
+		wg:         sync.WaitGroup{},
 	}
-
 	for i := 0; i < minWorkers; i++ {
-		initWorker(pool.workerPool, 0, nil, pool.quit)
+		initWorker(pool.workerPool, 0, nil, pool.stopped, &pool.wg)
 	}
-
+	go func() {
+		<-ctx.Done()
+		close(pool.stopped)
+	}()
 	go pool.dispatch()
-
-	return pool
+	return pool, ctx
 }
 
-// Stop stops the pool
-func (pool *WorkerPool) Stop() { pool.quitOnce.Do(func() { close(pool.quit) }) }
+// StopWait stops the pool (cancels the context), then waits for
+// all workers to quit.
+func (pool *WorkerPool) StopWait() {
+	pool.cancel()
+	pool.wg.Wait()
+}
 
-// Expand is for putting more 'Worker's into work. If there is'nt any job to do, and a timeout is set,
-// they will simply get timed-out and worker pool will shrink to it's minimum size.
-// Default behaviour is they will timeout on conf.Timeout in a sliding manner.
+// Expand is for putting more 'Worker's into work. If there is'nt any job to do,
+// and a timeout is set, they will simply get timed-out.
+// Default behaviour is they will timeout in a sliding manner.
 // A quit channel can be used too, to explicitly stop extra workers.
-func (pool *WorkerPool) Expand(n int, timeout time.Duration, quit chan struct{}) {
+func (pool *WorkerPool) Expand(n int, timeout time.Duration, quit <-chan struct{}) {
 	for i := 0; i < n; i++ {
-		initWorker(pool.workerPool, timeout, quit, pool.quit)
+		initWorker(pool.workerPool, timeout, quit, pool.stopped, &pool.wg)
 	}
 }
 
@@ -78,14 +90,14 @@ func (pool *WorkerPool) dispatch() {
 		case job, ok := <-pool.jobChannel:
 			if !ok {
 				// it means this WorkerPool should stop
-				pool.Stop()
+				pool.cancel()
 				return
 			}
 
 			//handle job
 			todo := <-pool.workerPool
 			todo <- job
-		case <-pool.quit:
+		case <-pool.stopped:
 			return
 		}
 	}
@@ -93,44 +105,31 @@ func (pool *WorkerPool) dispatch() {
 
 //-----------------------------------------------------------------------------
 
-// Job is a job to do, by the workers in the pool
-type Job interface {
-	Do()
-}
-
-//-----------------------------------------------------------------------------
-
-// JobFunc wraps a func() as Job
-type JobFunc func()
-
-// Do implements Job
-func (wf JobFunc) Do() {
-	wf()
-}
-
-//-----------------------------------------------------------------------------
-
 type worker struct {
-	workerPool  chan chan Job
-	todoChannel chan Job
+	workerPool  chan chan func()
+	todoChannel chan func()
 	timeout     time.Duration
-	quit        chan struct{}
-	poolQuit    chan struct{}
+	quit        <-chan struct{}
+	poolQuit    <-chan struct{}
 }
 
-func (w *worker) begin() {
-	for {
-		var timeout <-chan time.Time
-		if w.timeout > 0 {
-			timeout = time.After(w.timeout)
-		}
+func (w *worker) begin(wg *sync.WaitGroup) {
+	defer wg.Done()
+	var timeout <-chan time.Time
 
+	for {
 		select {
 		case <-w.quit:
 			return
 		case <-w.poolQuit:
 			return
+		case <-timeout:
+			return
 		default:
+		}
+
+		if w.timeout > 0 {
+			timeout = time.After(w.timeout)
 		}
 
 		// register this worker in the pool
@@ -153,28 +152,38 @@ func (w *worker) begin() {
 			}
 
 			if job != nil {
-				job.Do()
+				job()
 			}
 			// we do not check for timeout or quit here because a registered worker
 			// is meant to do his job
 			// (& implementing unregistering would be complicated, inefficiet & unnecessary)
-			// unless the whole pool is quit.
+			// unless the whole pool is quit (a prototype implemented using a priority queue
+			// - a heap - but it was just more complicated and did not add much; should
+			// investigate it more deeply; but this just works fine).
 		case <-w.poolQuit:
 			return
 		}
 	}
 }
 
-func initWorker(workerPool chan chan Job, timeout time.Duration, quit chan struct{}, poolQuit chan struct{}) *worker {
+func initWorker(
+	workerPool chan chan func(),
+	timeout time.Duration,
+	quit <-chan struct{},
+	poolQuit <-chan struct{},
+	wg *sync.WaitGroup) *worker {
 	w := &worker{
 		workerPool:  workerPool,
-		todoChannel: make(chan Job),
+		todoChannel: make(chan func()),
 		timeout:     timeout,
 		quit:        quit,
 		poolQuit:    poolQuit,
 	}
 
-	go w.begin()
+	wg.Add(1)
+	go w.begin(wg)
 
 	return w
 }
+
+//-----------------------------------------------------------------------------
