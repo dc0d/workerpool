@@ -221,7 +221,6 @@ func TestWithContext(t *testing.T) {
 
 	initialWorkers := 10
 	extraWorkers := 10
-	startedWith := runtime.NumGoroutine()
 
 	jobChannel := make(chan func(), 2)
 	pool, _ := WithContext(ctx, initialWorkers, jobChannel)
@@ -229,12 +228,15 @@ func TestWithContext(t *testing.T) {
 	pool.Expand(extraWorkers, 100*time.Millisecond, nil)
 
 	cancel()
-	pool.StopWait()
+	waitOver := make(chan struct{})
+	go func() {
+		pool.StopWait()
+		close(waitOver)
+	}()
 
-	afterGoroutines := runtime.NumGoroutine()
-
-	if afterGoroutines != startedWith {
-		t.Log(startedWith, afterGoroutines)
+	select {
+	case <-waitOver:
+	case <-time.After(3 * time.Second):
 		t.Fail()
 	}
 }
