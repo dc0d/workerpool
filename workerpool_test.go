@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"math"
 	"runtime"
 	"sync/atomic"
@@ -11,13 +12,15 @@ import (
 
 func TestNegWorkers(t *testing.T) {
 	jobChannel := make(chan func())
-	WithContext(context.Background(), -1, jobChannel)
+	pool, ctx := WithContext(context.Background(), -1, jobChannel)
 
 	n := int64(runtime.NumCPU())
 	var backSlot int64
 	var job = func() {
 		atomic.AddInt64(&backSlot, 1)
-		select {}
+		select {
+		case <-ctx.Done():
+		}
 	}
 OUT1:
 	for {
@@ -31,6 +34,12 @@ OUT1:
 	actual := atomic.LoadInt64(&backSlot)
 	if actual != n {
 		t.Log(actual)
+		t.Fail()
+	}
+
+	close(jobChannel)
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
@@ -69,13 +78,16 @@ func TestZeroWorkers(t *testing.T) {
 	if atomic.LoadInt64(&backSlot) != 73 {
 		t.Fail()
 	}
+
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
+		t.Fail()
+	}
 }
 
 func TestAbsoluteTimeout(t *testing.T) {
-	dispatcherGoroutine := 1
 	initialWorkers := 1
 	extraWorkers := 10
-	startedWith := runtime.NumGoroutine()
 
 	jobChannel := make(chan func(), 2)
 
@@ -83,13 +95,6 @@ func TestAbsoluteTimeout(t *testing.T) {
 
 	quit1 := make(chan struct{})
 	pool.Expand(extraWorkers, 0, quit1)
-
-	afterGoroutines := runtime.NumGoroutine()
-	thenGoroutines := startedWith + extraWorkers + initialWorkers + dispatcherGoroutine
-	if maxDiff(afterGoroutines, thenGoroutines, 1) {
-		t.Log(afterGoroutines, thenGoroutines)
-		t.Fail()
-	}
 
 	done := make(chan bool)
 	absoluteTimeout := func() {
@@ -101,21 +106,16 @@ func TestAbsoluteTimeout(t *testing.T) {
 	go absoluteTimeout()
 	<-done
 	<-time.After(time.Millisecond * 400)
-	runtime.GC()
 
-	afterGoroutines = runtime.NumGoroutine()
-	thenGoroutines = startedWith + initialWorkers + dispatcherGoroutine // no extraWorkers
-	if maxDiff(afterGoroutines, thenGoroutines, 2) {
-		t.Log(afterGoroutines, thenGoroutines)
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
 
 func TestTimeout(t *testing.T) {
-	dispatcherGoroutine := 1
 	initialWorkers := 1
 	extraWorkers := 10
-	startedWith := runtime.NumGoroutine()
 
 	jobChannel := make(chan func(), 2)
 
@@ -123,42 +123,25 @@ func TestTimeout(t *testing.T) {
 
 	pool.Expand(extraWorkers, time.Millisecond*10, nil)
 
-	<-time.After(time.Millisecond * 100)
-
-	afterGoroutines := runtime.NumGoroutine()
-	thenGoroutines := startedWith + initialWorkers + dispatcherGoroutine // no extraWorkers
-	if maxDiff(afterGoroutines, thenGoroutines, 2) {
-		t.Log(afterGoroutines, thenGoroutines)
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
 
 func TestQuit(t *testing.T) {
-	dispatcherGoroutine := 1
 	initialWorkers := 1
 	extraWorkers := 10
-	startedWith := runtime.NumGoroutine()
 
 	jobChannel := make(chan func(), 2)
 	pool, _ := WithContext(context.Background(), initialWorkers, jobChannel)
 
 	quit1 := make(chan struct{})
 	pool.Expand(extraWorkers, 0, quit1)
-
-	afterGoroutines := runtime.NumGoroutine()
-	thenGoroutines := startedWith + extraWorkers + initialWorkers + dispatcherGoroutine
-	if maxDiff(afterGoroutines, thenGoroutines, 1) {
-		t.Log(afterGoroutines, thenGoroutines)
-		t.Fail()
-	}
-
 	close(quit1)
-	<-time.After(time.Millisecond * 100)
 
-	afterGoroutines = runtime.NumGoroutine()
-	thenGoroutines = startedWith + initialWorkers + dispatcherGoroutine // no extraWorkers
-	if maxDiff(afterGoroutines, thenGoroutines, 1) {
-		t.Log(afterGoroutines, thenGoroutines)
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
@@ -170,23 +153,16 @@ func maxDiff(fst, snd, diff int) bool {
 func TestWorkerPoolQuit(t *testing.T) {
 	initialWorkers := 10
 	extraWorkers := 10
-	startedWith := runtime.NumGoroutine()
 
 	jobChannel := make(chan func(), 2)
 	pool, _ := WithContext(context.Background(), initialWorkers, jobChannel)
 
 	quit1 := make(chan struct{})
 	pool.Expand(extraWorkers, 0, quit1)
+	close(quit1)
 
-	pool.StopWait()
-	<-time.After(time.Millisecond * 500)
-	runtime.GC()
-	<-time.After(time.Millisecond * 500)
-
-	afterGoroutines := runtime.NumGoroutine()
-
-	if afterGoroutines != startedWith {
-		t.Log(startedWith, afterGoroutines)
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
@@ -194,7 +170,6 @@ func TestWorkerPoolQuit(t *testing.T) {
 func TestWorkerPoolQuitByClosingJobChannel(t *testing.T) {
 	initialWorkers := 10
 	extraWorkers := 10
-	startedWith := runtime.NumGoroutine()
 
 	jobChannel := make(chan func(), 2)
 	pool, _ := WithContext(context.Background(), initialWorkers, jobChannel)
@@ -202,16 +177,10 @@ func TestWorkerPoolQuitByClosingJobChannel(t *testing.T) {
 	quit1 := make(chan struct{})
 	pool.Expand(extraWorkers, 0, quit1)
 
-	// should use pool.Stop() instead, but this might come in handy too
+	// should use pool.StopWait() instead, but this might come in handy too
 	close(jobChannel)
-	<-time.After(time.Millisecond * 500)
-	runtime.GC()
-	<-time.After(time.Millisecond * 500)
-
-	afterGoroutines := runtime.NumGoroutine()
-
-	if afterGoroutines != startedWith {
-		t.Log(startedWith, afterGoroutines)
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
@@ -228,15 +197,38 @@ func TestWithContext(t *testing.T) {
 	pool.Expand(extraWorkers, 100*time.Millisecond, nil)
 
 	cancel()
-	waitOver := make(chan struct{})
-	go func() {
-		pool.StopWait()
-		close(waitOver)
-	}()
-
-	select {
-	case <-waitOver:
-	case <-time.After(3 * time.Second):
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
 		t.Fail()
 	}
 }
+
+func waitFunc(f func(), exitDelay time.Duration) error {
+	funcDone := make(chan struct{})
+	go func() {
+		defer close(funcDone)
+		f()
+	}()
+
+	if exitDelay <= 0 {
+		<-funcDone
+
+		return nil
+	}
+
+	select {
+	case <-time.After(exitDelay):
+		return ErrTimeout
+	case <-funcDone:
+	}
+
+	return nil
+}
+
+var (
+	ErrTimeout = errors.New(`TIMEOUT`)
+)
+
+const (
+	_timeout = time.Second * 5
+)
