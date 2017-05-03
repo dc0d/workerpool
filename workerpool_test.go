@@ -3,11 +3,40 @@ package workerpool
 import (
 	"context"
 	"errors"
-	"math"
 	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
+)
+
+var (
+	ErrTimeout = errors.New(`TIMEOUT`)
+)
+
+func waitFunc(f func(), exitDelay time.Duration) error {
+	funcDone := make(chan struct{})
+	go func() {
+		defer close(funcDone)
+		f()
+	}()
+
+	if exitDelay <= 0 {
+		<-funcDone
+
+		return nil
+	}
+
+	select {
+	case <-time.After(exitDelay):
+		return ErrTimeout
+	case <-funcDone:
+	}
+
+	return nil
+}
+
+const (
+	_timeout = time.Second * 5
 )
 
 func TestNegWorkers(t *testing.T) {
@@ -146,10 +175,6 @@ func TestQuit(t *testing.T) {
 	}
 }
 
-func maxDiff(fst, snd, diff int) bool {
-	return math.Abs(float64(fst)-float64(snd)) > float64(diff)
-}
-
 func TestWorkerPoolQuit(t *testing.T) {
 	initialWorkers := 10
 	extraWorkers := 10
@@ -203,32 +228,40 @@ func TestWithContext(t *testing.T) {
 	}
 }
 
-func waitFunc(f func(), exitDelay time.Duration) error {
-	funcDone := make(chan struct{})
-	go func() {
-		defer close(funcDone)
-		f()
+func TestTimeoutNoGoroutineLeak(t *testing.T) {
+	initialWorkers := 10
+	extraWorkers := 1000
+
+	jobChannel := make(chan func(), 1000)
+
+	go func() { // A
+		for i := 0; i < extraWorkers; i++ {
+			jobChannel <- func() {
+				time.Sleep(time.Millisecond * 10)
+			}
+		}
 	}()
 
-	if exitDelay <= 0 {
-		<-funcDone
+	pool, _ := WithContext(context.Background(), initialWorkers, jobChannel)
 
-		return nil
+	before := runtime.NumGoroutine()
+	pool.Expand(extraWorkers, time.Millisecond*100, nil)
+	<-time.After(time.Millisecond * 500)
+	go func() {
+		for i := 0; i < initialWorkers*2; i++ {
+			jobChannel <- func() {
+				time.Sleep(time.Millisecond * 10)
+			}
+		}
+	}()
+	<-time.After(time.Millisecond * 500)
+	after := runtime.NumGoroutine()
+	if (after - before) > (initialWorkers * 2) {
+		t.Fatal()
 	}
 
-	select {
-	case <-time.After(exitDelay):
-		return ErrTimeout
-	case <-funcDone:
+	err := waitFunc(pool.StopWait, _timeout)
+	if err != nil {
+		t.Fail()
 	}
-
-	return nil
 }
-
-var (
-	ErrTimeout = errors.New(`TIMEOUT`)
-)
-
-const (
-	_timeout = time.Second * 5
-)

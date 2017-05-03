@@ -75,3 +75,6 @@ go get gopkg.in/dc0d/workerpool.v2
 ```
 
 Or from the `master` branch.
+
+## Note
+One firend noted that there might be a *temporary* goroutine leak, when expanding the worker pool, using timeouts. Actually is's not a goroutine leak because it's always bound to the size of pool and has a deterministic behavior. Assuming we have a worker pool of size 10, and we expand it with a 1000 extra workers, that would timeout after 100 mili-seconds, we may see (after some 100 mili-second) there remains twice the initial size of the pool (10 * 2) number of goroutines - which of-cource would get timedout after doing some extra jobs and the pool will shrink to it's initial size. The reason for this temporary expanded lives of some extra workers is, the initial workers may fail to register before those extra workers. So we will have 10 registered extra workers, plus 10 unregistered initial workers. And the rest of extra workers will get timedout because they fail to register. So we have 20 goroutines in the pool at max, in this very specific situation, which will evantually get timed out. That's not a goroutine leak (it described as *temporary* in the first place) but it was entertaining to find out why and how that happens! A test named `TestTimeoutNoGoroutineLeak(...)` is added to descibe this in code.
