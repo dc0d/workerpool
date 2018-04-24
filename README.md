@@ -14,7 +14,7 @@ $ go get -u -v -tags v3 github.com/dc0d/workerpool
 Previous version:
 
 ```
-$ go get -u -v -tags v2 github.com/dc0d/workerpool
+$ go get -u -v gopkg.in/dc0d/workerpool.v2
 ```
 
 This is an implementation of a workerpool which can get expanded &amp; shrink dynamically. Workers can get added when needed and get dismissed when no longer are needed. Of-course this workerpool can be used just as a simple one with a fixed size.
