@@ -1,4 +1,8 @@
 // Package workerpool provides a workerpool. It also can expand and shrink dynamically.
+//
+// Jobs can be queued using the Queue() method which also accepts a timeout parameter for timing out queuing and if all workers are too busy.
+//
+// For expanding the queue, Expand() method can be used, which increases the number of workers. If a timeout is provided, these extra workers will stop, if there are not enough jobs to do. It is also possible to explicitly stop extra workers by providing a quit channel.
 package workerpool
 
 import (
