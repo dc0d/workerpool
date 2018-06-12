@@ -51,9 +51,7 @@ func TestNegWorkers(t *testing.T) {
 	var backSlot int64
 	var job = func() {
 		atomic.AddInt64(&backSlot, 1)
-		select {
-		case <-quit:
-		}
+		<-quit
 	}
 	for pool.Queue(job, time.Millisecond*50) {
 	}
