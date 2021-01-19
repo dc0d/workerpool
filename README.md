@@ -2,7 +2,7 @@
 
 
 
-[![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](http://opensource.org/licenses/MIT) [![Go Reference](https://pkg.go.dev/badge/github.com/dc0d/workerpool.svg)](https://pkg.go.dev/github.com/dc0d/workerpool) [![Go Report Card](https://goreportcard.com/badge/github.com/dc0d/workerpool)](https://goreportcard.com/report/github.com/dc0d/workerpool) [![Maintainability](https://api.codeclimate.com/v1/badges/8aacea5d15dbf2295a5d/maintainability)](https://codeclimate.com/github/dc0d/workerpool/maintainability) [![Test Coverage](https://api.codeclimate.com/v1/badges/8aacea5d15dbf2295a5d/test_coverage)](https://codeclimate.com/github/dc0d/workerpool/test_coverage)
+[![License MIT](https://img.shields.io/badge/License-MIT-blue.svg)](http://opensource.org/licenses/MIT) [![Go Reference](https://pkg.go.dev/badge/github.com/dc0d/workerpool/v4.svg)](https://pkg.go.dev/github.com/dc0d/workerpool/v4) [![Go Report Card](https://goreportcard.com/badge/github.com/dc0d/workerpool)](https://goreportcard.com/report/github.com/dc0d/workerpool) [![Maintainability](https://api.codeclimate.com/v1/badges/8aacea5d15dbf2295a5d/maintainability)](https://codeclimate.com/github/dc0d/workerpool/maintainability) [![Test Coverage](https://api.codeclimate.com/v1/badges/8aacea5d15dbf2295a5d/test_coverage)](https://codeclimate.com/github/dc0d/workerpool/test_coverage)
 
 
 This Go Module contains an implementation of a workerpool which can get expanded &amp; shrink dynamically. Workers can get added when needed and get dismissed when no longer are needed. Of-course this workerpool can be used just as a simple one with a fixed size.
