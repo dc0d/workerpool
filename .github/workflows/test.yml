@@ -10,15 +10,35 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v2
       with:
-        go-version: '^1.14'
+        go-version: '^1.15'
 
     - name: Checkout Code
       uses: actions/checkout@v2
 
     - name: Test
-      run: go test -count=1 -timeout 10s ./...
+      run: |
+        make
+        make race
 
     - name: Lint
-      uses: golangci/golangci-lint-action@v1
+      uses: golangci/golangci-lint-action@v2
       with:
         version: v1.29
+
+    - name: Test Reporter 1
+      run: |
+        export GIT_COMMIT_SHA="${GITHUB_SHA}"
+        export GIT_BRANCH="${GITHUB_REF/refs\/heads\//}"
+        curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+        chmod +x ./cc-test-reporter
+        ./cc-test-reporter before-build
+
+    - name: Test With Coverage
+      run: |
+        go test -count=1 -timeout 60s -p 1 -coverprofile c.out -coverpkg=./... ./...
+
+    - name: Test Reporter 2
+      env:
+        CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+      run: |
+        ./cc-test-reporter after-build --prefix github.com/dc0d/workerpool/v4
