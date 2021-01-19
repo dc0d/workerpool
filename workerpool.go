@@ -41,7 +41,14 @@ func New(workers int, jobQueue ...int) *WorkerPool {
 		wg:   sync.WaitGroup{},
 	}
 	for i := 0; i < workers; i++ {
-		initWorker(pool.pool, 0, nil, pool.quit, &pool.wg)
+		var builder workerBuilder
+		w := builder.
+			withPool(pool.pool).
+			withPoolQuit(pool.quit).
+			withTimeout(0).
+			withQuit(pool.quit).
+			build()
+		w.initWorker(&pool.wg)
 	}
 	go pool.dispatch()
 	return &pool
@@ -98,7 +105,14 @@ func (pool *WorkerPool) Expand(n int, timeout time.Duration, quit <-chan struct{
 		return false
 	}
 	for i := 0; i < n; i++ {
-		initWorker(pool.pool, timeout, quit, pool.quit, &pool.wg)
+		var builder workerBuilder
+		w := builder.
+			withPool(pool.pool).
+			withPoolQuit(pool.quit).
+			withTimeout(timeout).
+			withQuit(pool.quit).
+			build()
+		w.initWorker(&pool.wg)
 	}
 	return true
 }
@@ -131,80 +145,115 @@ type worker struct {
 }
 
 func (w *worker) begin(wg *sync.WaitGroup) {
-	defer wg.Done()
-	var timeout <-chan time.Time
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var timeout <-chan time.Time
 
-	for {
-		select {
-		case <-w.quit:
-			return
-		case <-w.poolQuit:
-			return
-		case <-timeout:
-			return
-		default:
-		}
-
-		if w.timeout > 0 {
-			timeout = time.After(w.timeout)
-		}
-
-		// register this worker in the pool
-		select {
-		case w.pool <- w.todo:
-		case <-timeout:
-			//failed to register; means WorkerPool is full == there are
-			//enough workers with not enough work!
-			return
-		case <-w.quit:
-			return
-		case <-w.poolQuit:
-			return
-		}
-
-		select {
-		case job, ok := <-w.todo:
-			if !ok {
+		for {
+			if w.shouldQuit(timeout) {
 				return
 			}
 
-			if job != nil {
-				job()
+			if w.timeout > 0 {
+				timeout = time.After(w.timeout)
 			}
-			// we do not check for timeout or quit here because a registered worker
-			// is meant to do his job
-			// (& implementing unregistering would be complicated, inefficiet & unnecessary)
-			// unless the whole pool is quit (a prototype implemented using a priority queue
-			// - a heap - but it was just more complicated and did not add much; should
-			// investigate it more deeply; but this just works fine; after the burst,
-			// the expanded workers would just do their last job, eventually).
-		case <-w.poolQuit:
-			return
+
+			if !w.registerInPool(timeout) {
+				return
+			}
+
+			if !w.executeJob() {
+				return
+			}
 		}
+	}()
+}
+
+func (w *worker) shouldQuit(timeout <-chan time.Time) (ok bool) {
+	select {
+	case <-w.quit:
+		return true
+	case <-w.poolQuit:
+		return true
+	case <-timeout:
+		return true
+	default:
+	}
+
+	return false
+}
+
+func (w *worker) registerInPool(timeout <-chan time.Time) (ok bool) {
+	// register this worker in the pool
+	select {
+	case w.pool <- w.todo:
+		return true
+	case <-timeout:
+		//failed to register; means WorkerPool is full == there are
+		//enough workers with not enough work!
+		return false
+	case <-w.quit:
+		return false
+	case <-w.poolQuit:
+		return false
 	}
 }
 
-func initWorker(
-	pool chan chan func(),
-	timeout time.Duration,
-	quit <-chan struct{},
-	poolQuit <-chan struct{},
-	wg *sync.WaitGroup) *worker {
-	if stopped(poolQuit) {
-		return nil
-	}
-	w := &worker{
-		pool:     pool,
-		todo:     make(chan func()),
-		timeout:  timeout,
-		quit:     quit,
-		poolQuit: poolQuit,
+func (w *worker) executeJob() (ok bool) {
+	select {
+	case job, ok := <-w.todo:
+		if !ok {
+			return false
+		}
+
+		if job != nil {
+			job()
+		}
+		// we do not check for timeout or quit here because a registered worker
+		// is meant to do his job
+		// (& implementing unregistering would be complicated, inefficiet & unnecessary)
+		// unless the whole pool is quit (a prototype implemented using a priority queue
+		// - a heap - but it was just more complicated and did not add much; should
+		// investigate it more deeply; but this just works fine; after the burst,
+		// the expanded workers would just do their last job, eventually).
+	case <-w.poolQuit:
+		return false
 	}
 
-	wg.Add(1)
-	go w.begin(wg)
+	return true
+}
 
-	return w
+func (w *worker) initWorker(wg *sync.WaitGroup) {
+	if stopped(w.poolQuit) {
+		return
+	}
+
+	w.begin(wg)
+}
+
+type workerBuilder worker
+
+func (builder workerBuilder) withPool(pool chan chan func()) workerBuilder {
+	builder.pool = pool
+	return builder
+}
+func (builder workerBuilder) withPoolQuit(poolQuit <-chan struct{}) workerBuilder {
+	builder.poolQuit = poolQuit
+	return builder
+}
+func (builder workerBuilder) withTimeout(timeout time.Duration) workerBuilder {
+	builder.timeout = timeout
+	return builder
+}
+func (builder workerBuilder) withQuit(quit <-chan struct{}) workerBuilder {
+	builder.quit = quit
+	return builder
+}
+func (builder workerBuilder) build() *worker {
+	builder.todo = make(chan func())
+	w := worker(builder)
+	return &w
 }
 
 //-----------------------------------------------------------------------------
