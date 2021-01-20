@@ -16,10 +16,10 @@ In the `go.mod` file of your code:
 ```
 module github.com/user/project
 
-go 1.14
+go 1.15
 
 require (
-	github.com/dc0d/workerpool/v4 v4.1.0
+	github.com/dc0d/workerpool/v4 v4.2.1
 
     ...
 )
