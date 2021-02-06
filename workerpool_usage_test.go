@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dc0d/workerpool/v4"
+	"github.com/dc0d/workerpool/v5"
 	"github.com/stretchr/testify/assert"
 )
 
