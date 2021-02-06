@@ -1,4 +1,4 @@
-module github.com/dc0d/workerpool/v4
+module github.com/dc0d/workerpool/v5
 
 go 1.15
 
