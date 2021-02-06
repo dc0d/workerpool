@@ -43,7 +43,7 @@ const (
 
 func TestNegWorkers(t *testing.T) {
 	assert := assert.New(t)
-	pool := workerpool.New(-1)
+	pool := workerpool.New(-1, -1)
 
 	quit := make(chan struct{})
 
@@ -66,13 +66,13 @@ func TestNegWorkers(t *testing.T) {
 
 func TestZeroWorkers(t *testing.T) {
 	assert := assert.New(t)
-	pool := workerpool.New(0)
+	pool := workerpool.New(0, 0)
 
 	var backSlot int64 = 10
 	var job = func() {
 		atomic.StoreInt64(&backSlot, 110)
 	}
-	pool.Queue(job)
+	pool.Queue(job, 0)
 
 	assert.Equal(int64(10), atomic.LoadInt64(&backSlot))
 
@@ -168,7 +168,7 @@ func TestTimeoutNoGoroutineLeak(t *testing.T) {
 		for i := 0; i < extraWorkers; i++ {
 			assert.True(pool.Queue(func() {
 				time.Sleep(time.Millisecond * 10)
-			}))
+			}, 0))
 		}
 	}()
 
@@ -177,7 +177,7 @@ func TestTimeoutNoGoroutineLeak(t *testing.T) {
 		for i := 0; i < initialWorkers*2; i++ {
 			assert.True(pool.Queue(func() {
 				time.Sleep(time.Millisecond * 10)
-			}))
+			}, 0))
 		}
 	}()
 
@@ -191,14 +191,14 @@ func TestTimeoutNoGoroutineLeak(t *testing.T) {
 }
 
 func ExampleWorkerPool() {
-	pool := workerpool.New(-1)
+	pool := workerpool.New(-1, 0)
 
 	var v int64
 	go func() {
 		for i := 0; i < 100; i++ {
 			pool.Queue(func() {
 				atomic.AddInt64(&v, 1)
-			})
+			}, 0)
 		}
 	}()
 
@@ -210,7 +210,7 @@ func ExampleWorkerPool() {
 }
 
 func ExampleWorkerPool_Expand() {
-	pool := workerpool.New(-1)
+	pool := workerpool.New(-1, 0)
 	pool.Expand(1000, time.Millisecond, nil)
 
 	var v int64
@@ -218,7 +218,7 @@ func ExampleWorkerPool_Expand() {
 		for i := 0; i < 100; i++ {
 			pool.Queue(func() {
 				atomic.AddInt64(&v, 1)
-			})
+			}, 0)
 		}
 	}()
 

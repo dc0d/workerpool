@@ -26,21 +26,20 @@ type WorkerPool struct {
 }
 
 // New makes a new *WorkerPool.
-func New(workers int, jobQueue ...int) *WorkerPool {
-	q := 0
-	if len(jobQueue) > 0 && jobQueue[0] > 0 {
-		q = jobQueue[0]
+func New(workerCount int, jobQueueSize int) *WorkerPool {
+	if jobQueueSize < 0 {
+		jobQueueSize = 0
 	}
-	if workers < 0 {
-		workers = runtime.NumCPU()
+	if workerCount < 0 {
+		workerCount = runtime.NumCPU()
 	}
 	pool := WorkerPool{
-		pool: make(chan chan func(), workers),
-		jobs: make(chan func(), q),
+		pool: make(chan chan func(), workerCount),
+		jobs: make(chan func(), jobQueueSize),
 		quit: make(chan struct{}),
 		wg:   sync.WaitGroup{},
 	}
-	for i := 0; i < workers; i++ {
+	for i := 0; i < workerCount; i++ {
 		var builder workerBuilder
 		w := builder.
 			withPool(pool.pool).
@@ -55,13 +54,13 @@ func New(workers int, jobQueue ...int) *WorkerPool {
 }
 
 // Queue queues a job to be run by a worker.
-func (pool *WorkerPool) Queue(job func(), timeout ...time.Duration) bool {
+func (pool *WorkerPool) Queue(job func(), timeout time.Duration) bool {
 	if pool.stopped() {
 		return false
 	}
 	var t <-chan time.Time
-	if len(timeout) > 0 && timeout[0] > 0 {
-		t = time.After(timeout[0])
+	if timeout > 0 {
+		t = time.After(timeout)
 	}
 	select {
 	case pool.jobs <- job:
