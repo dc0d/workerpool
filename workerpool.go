@@ -1,8 +1,11 @@
 // Package workerpool provides a workerpool. It also can expand and shrink dynamically.
 //
-// Jobs can be queued using the Queue() method which also accepts a timeout parameter for timing out queuing and if all workers are too busy.
+// Jobs can be queued using the Queue() method which also accepts a timeout parameter for
+// timing out queuing and if all workers are too busy.
 //
-// For expanding the queue, Expand() method can be used, which increases the number of workers. If a timeout is provided, these extra workers will stop, if there are not enough jobs to do. It is also possible to explicitly stop extra workers by providing a quit channel.
+// For expanding the queue, Expand() method can be used, which increases the number of workers.
+// If a timeout is provided, these extra workers will stop, if there are not enough jobs to do.
+// It is also possible to explicitly stop extra workers by providing a quit channel.
 package workerpool
 
 import (
@@ -26,7 +29,7 @@ type WorkerPool struct {
 }
 
 // New makes a new *WorkerPool.
-func New(workerCount int, jobQueueSize int) *WorkerPool {
+func New(workerCount, jobQueueSize int) *WorkerPool {
 	if jobQueueSize < 0 {
 		jobQueueSize = 0
 	}
@@ -80,7 +83,7 @@ func (pool *WorkerPool) Stop() {
 
 // Expand is for putting more 'Worker's into work. If there is'nt any job to do,
 // and a timeout is set, they will simply get timed-out.
-// Default behaviour is they will timeout in a sliding manner.
+// Default behavior is they will timeout in a sliding manner.
 // A quit channel can be used too, to explicitly stop extra workers.
 //
 // One firend noted that there might be a *temporary* goroutine leak, when expanding
@@ -124,7 +127,7 @@ func (pool *WorkerPool) dispatch() {
 	for {
 		select {
 		case job := <-pool.jobs:
-			//handle job
+			// handle job
 			todo := <-pool.pool
 			todo <- job
 		case <-pool.quit:
@@ -189,8 +192,8 @@ func (w *worker) registerInPool(timeout <-chan time.Time) (ok bool) {
 	case w.pool <- w.todo:
 		return true
 	case <-timeout:
-		//failed to register; means WorkerPool is full == there are
-		//enough workers with not enough work!
+		// failed to register; means WorkerPool is full == there are
+		// enough workers with not enough work!
 		return false
 	case <-w.quit:
 		return false

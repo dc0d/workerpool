@@ -11,38 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	ErrTimeout = errors.New(`TIMEOUT`)
-)
-
-func waitFunc(f func(), exitDelay time.Duration) error {
-	funcDone := make(chan struct{})
-	go func() {
-		defer close(funcDone)
-		f()
-	}()
-
-	if exitDelay <= 0 {
-		<-funcDone
-
-		return nil
-	}
-
-	select {
-	case <-time.After(exitDelay):
-		return ErrTimeout
-	case <-funcDone:
-	}
-
-	return nil
-}
-
-const (
-	_timeout = time.Second * 5
-)
-
 func TestNegWorkers(t *testing.T) {
-	assert := assert.New(t)
 	pool := workerpool.New(-1, -1)
 
 	quit := make(chan struct{})
@@ -57,15 +26,14 @@ func TestNegWorkers(t *testing.T) {
 	}
 
 	actual := atomic.LoadInt64(&backSlot)
-	assert.Equal(n, actual)
+	assert.Equal(t, n, actual)
 
 	close(quit)
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func TestZeroWorkers(t *testing.T) {
-	assert := assert.New(t)
 	pool := workerpool.New(0, 0)
 
 	var backSlot int64 = 10
@@ -74,7 +42,7 @@ func TestZeroWorkers(t *testing.T) {
 	}
 	pool.Queue(job, 0)
 
-	assert.Equal(int64(10), atomic.LoadInt64(&backSlot))
+	assert.Equal(t, int64(10), atomic.LoadInt64(&backSlot))
 
 	pool.Expand(1, 0, nil)
 
@@ -83,16 +51,15 @@ func TestZeroWorkers(t *testing.T) {
 		defer close(done)
 		atomic.StoreInt64(&backSlot, 73)
 	}
-	assert.True(pool.Queue(job, time.Millisecond*50))
+	assert.True(t, pool.Queue(job, time.Millisecond*50))
 	<-done
 
-	assert.Equal(int64(73), atomic.LoadInt64(&backSlot))
+	assert.Equal(t, int64(73), atomic.LoadInt64(&backSlot))
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func TestAbsoluteTimeout(t *testing.T) {
-	assert := assert.New(t)
 	initialWorkers := 1
 	extraWorkers := 10
 
@@ -112,11 +79,10 @@ func TestAbsoluteTimeout(t *testing.T) {
 	<-done
 	<-time.After(time.Millisecond * 400)
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func TestTimeout(t *testing.T) {
-	assert := assert.New(t)
 	initialWorkers := 1
 	extraWorkers := 10
 
@@ -124,11 +90,10 @@ func TestTimeout(t *testing.T) {
 
 	pool.Expand(extraWorkers, time.Millisecond*10, nil)
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func TestQuit(t *testing.T) {
-	assert := assert.New(t)
 	initialWorkers := 1
 	extraWorkers := 10
 
@@ -138,11 +103,10 @@ func TestQuit(t *testing.T) {
 	pool.Expand(extraWorkers, 0, quit1)
 	close(quit1)
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func TestWorkerPoolQuit(t *testing.T) {
-	assert := assert.New(t)
 	initialWorkers := 10
 	extraWorkers := 10
 
@@ -150,13 +114,12 @@ func TestWorkerPoolQuit(t *testing.T) {
 
 	pool.Expand(extraWorkers, 0, nil)
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func TestTimeoutNoGoroutineLeak(t *testing.T) {
 	initialWorkers := 10
 	extraWorkers := 1000
-	assert := assert.New(t)
 
 	pool := workerpool.New(initialWorkers, 2)
 
@@ -166,7 +129,7 @@ func TestTimeoutNoGoroutineLeak(t *testing.T) {
 
 	go func() { // A
 		for i := 0; i < extraWorkers; i++ {
-			assert.True(pool.Queue(func() {
+			assert.True(t, pool.Queue(func() {
 				time.Sleep(time.Millisecond * 10)
 			}, 0))
 		}
@@ -175,7 +138,7 @@ func TestTimeoutNoGoroutineLeak(t *testing.T) {
 	<-time.After(time.Millisecond * 500)
 	go func() {
 		for i := 0; i < initialWorkers*2; i++ {
-			assert.True(pool.Queue(func() {
+			assert.True(t, pool.Queue(func() {
 				time.Sleep(time.Millisecond * 10)
 			}, 0))
 		}
@@ -187,7 +150,7 @@ func TestTimeoutNoGoroutineLeak(t *testing.T) {
 		t.Fatal()
 	}
 
-	assert.NoError(waitFunc(pool.Stop, _timeout))
+	assert.NoError(t, waitFunc(pool.Stop, _timeout))
 }
 
 func ExampleWorkerPool() {
@@ -228,3 +191,34 @@ func ExampleWorkerPool_Expand() {
 		panic("BOOM!")
 	}
 }
+
+//nolint
+func waitFunc(f func(), exitDelay time.Duration) error {
+	funcDone := make(chan struct{})
+	go func() {
+		defer close(funcDone)
+		f()
+	}()
+
+	if exitDelay <= 0 {
+		<-funcDone
+
+		return nil
+	}
+
+	select {
+	case <-time.After(exitDelay):
+		return ErrTimeout
+	case <-funcDone:
+	}
+
+	return nil
+}
+
+var (
+	ErrTimeout = errors.New(`TIMEOUT`)
+)
+
+const (
+	_timeout = time.Second * 5
+)
